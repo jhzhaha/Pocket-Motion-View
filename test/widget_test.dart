@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:dji_live_gallery/main.dart';
+import 'package:dji_live_gallery/src/media_color.dart';
 import 'package:dji_live_gallery/src/models.dart';
 import 'package:dji_live_gallery/src/preview_dialog.dart';
 import 'package:dji_live_gallery/src/video_preview.dart';
@@ -62,6 +64,54 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpAndSettle();
     expect(tester.getSize(find.byTooltip('实况')), first.size);
+  });
+
+  testWidgets('selected media filter uses light ink on a dark fill', (
+    tester,
+  ) async {
+    final colors =
+        ColorScheme.fromSeed(
+          seedColor: Colors.brown,
+          brightness: Brightness.dark,
+        ).copyWith(
+          primaryContainer: const Color(0xFF282322),
+          onPrimaryContainer: Colors.white,
+        );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(colorScheme: colors),
+        home: HomePage(configFile: File('${work.path}/config.json')),
+      ),
+    );
+    final selected = find.byTooltip('实况');
+    final icon = find.descendant(of: selected, matching: find.byType(Icon));
+    final count = find.descendant(of: selected, matching: find.text('0'));
+    expect(tester.widget<Icon>(icon).color, Colors.white);
+    expect(tester.widget<Icon>(icon).size, 36);
+    expect(tester.widget<Text>(count).style?.color, Colors.white);
+    expect(tester.widget<Text>(count).style?.fontSize, 17);
+  });
+
+  test('palette samples ignore near-black pixels', () async {
+    Future<Color?> sample({required bool paintAccent}) async {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final paint = Paint()..color = const Color(0xFF1E191B);
+      canvas.drawRect(const Rect.fromLTWH(0, 0, 40, 12), paint);
+      if (paintAccent) {
+        paint.color = const Color(0xFFC7AC8A);
+        canvas.drawRect(const Rect.fromLTWH(32, 0, 8, 12), paint);
+      }
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(40, 12);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      picture.dispose();
+      return sampleMediaColor('', bytes!.buffer.asUint8List());
+    }
+
+    expect(await sample(paintAccent: true), const Color(0xFFC7AC8A));
+    expect(await sample(paintAccent: false), isNull);
   });
 
   testWidgets('format arrow updates the primary action without exporting', (

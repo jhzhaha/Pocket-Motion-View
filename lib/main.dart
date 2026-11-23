@@ -31,7 +31,7 @@ class DjiLiveApp extends StatefulWidget {
 }
 
 class _DjiLiveAppState extends State<DjiLiveApp> {
-  Color _seed = const Color(0xFF516569);
+  Color _seed = const Color(0xFFC7AC8A);
 
   void _applyPalette(Color dominant) {
     final hsl = HSLColor.fromColor(dominant);
@@ -44,10 +44,13 @@ class _DjiLiveAppState extends State<DjiLiveApp> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = ColorScheme.fromSeed(
+    final palette = ColorScheme.fromSeed(
       seedColor: _seed,
       dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
     );
+    final colors = palette.primaryContainer.computeLuminance() < 0.18
+        ? palette.copyWith(onPrimaryContainer: Colors.white)
+        : palette;
     return MaterialApp(
       title: 'Pocket Motion',
       theme: ThemeData(
@@ -742,24 +745,26 @@ class _HomePageState extends State<HomePage> {
                                         children: [
                                           Icon(
                                             entry.value.icon,
-                                            size: 30,
+                                            size: 36,
                                             color: _filter == entry.key
                                                 ? colors.onPrimaryContainer
                                                 : colors.onSurfaceVariant,
                                           ),
-                                          const SizedBox(height: 4),
+                                          const SizedBox(height: 3),
                                           FittedBox(
                                             fit: BoxFit.scaleDown,
                                             child: Text(
                                               '${counts[entry.key]}',
                                               style: TextStyle(
-                                                fontSize: 21,
+                                                fontSize: 17,
                                                 height: 1.1,
-                                                fontWeight: FontWeight.w700,
+                                                fontWeight: FontWeight.w500,
                                                 fontFeatures: const [
                                                   FontFeature.tabularFigures(),
                                                 ],
-                                                color: colors.onSurface,
+                                                color: _filter == entry.key
+                                                    ? colors.onPrimaryContainer
+                                                    : colors.onSurfaceVariant,
                                               ),
                                             ),
                                           ),
@@ -786,10 +791,14 @@ class _HomePageState extends State<HomePage> {
               onExit: (_) => _scheduleSettingsClose(),
               child: _SurfacePanel(
                 radius: 14,
+                highlight: _settingsOpen,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: IconButton(
                     isSelected: _settingsOpen,
+                    color: _settingsOpen
+                        ? colors.onPrimaryContainer
+                        : colors.onSurfaceVariant,
                     tooltip: '目录设置',
                     icon: const Icon(Icons.settings_outlined),
                     selectedIcon: const Icon(Icons.settings),
@@ -1064,9 +1073,9 @@ class _HomePageState extends State<HomePage> {
                             '素材库',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.headlineSmall?.copyWith(
+                            style: theme.textTheme.titleLarge?.copyWith(
                               locale: const Locale('zh', 'CN'),
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               letterSpacing: 0,
                               height: 1.25,
                               color: theme.colorScheme.onSurface,

@@ -47,6 +47,7 @@ ui.Color? _dominantColor(ByteData pixels) {
     final r = pixels.getUint8(i);
     final g = pixels.getUint8(i + 1);
     final b = pixels.getUint8(i + 2);
+    if (math.max(r, math.max(g, b)) <= 46) continue;
     final bucket = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
     final current = groups[bucket] ?? (count: 0, red: 0, green: 0, blue: 0);
     groups[bucket] = (
