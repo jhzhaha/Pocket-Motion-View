@@ -2,6 +2,12 @@
 
 Pocket Motion View 从 DJI Osmo Pocket 4 和 Pocket 4P 的相机素材恢复实况照片，并提供桌面预览和批量导出。此项目源自 [MicageEritc/Pocket-Motion](https://github.com/MicageEritc/Pocket-Motion)。
 
+## 主界面
+
+![Pocket Motion View 素材库，展示不同宽高比的演示缩略图](docs/pocket-motion-view-demo.webp)
+
+截图中的素材由 AI 生成。
+
 ## 此 fork 新增
 
 - 识别 Pocket 4 原始 MP4 中的实况模板，兼容横拍和竖拍，也支持上游已有的 Pocket 4P 素材。
