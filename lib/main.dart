@@ -1046,115 +1046,126 @@ class _HomePageState extends State<HomePage> {
     const toolbarBottom = 8.0;
     final overlayGallery = preview == null && visible.isNotEmpty;
     final showSummary = !_exporting && _totalCount > 0;
-    final header = Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(inset, toolbarTop, inset, toolbarBottom),
-          child: ClipRRect(
-            key: const ValueKey('library-toolbar'),
-            borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              enabled: overlayGallery,
-              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-              child: Material(
-                color: theme.colorScheme.surface.withValues(
-                  alpha: overlayGallery ? 0.76 : 1,
-                ),
-                child: SizedBox(
-                  height: toolbarHeight,
-                  child: Padding(
+    final header = Padding(
+      padding: EdgeInsets.fromLTRB(inset, toolbarTop, inset, toolbarBottom),
+      child: ClipRRect(
+        key: const ValueKey('library-toolbar'),
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          enabled: overlayGallery,
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Material(
+            color: theme.colorScheme.surface.withValues(
+              alpha: overlayGallery ? 0.76 : 1,
+            ),
+            child: SizedBox(
+              height: toolbarHeight,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Padding(
                     padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '素材库',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              locale: const Locale('zh', 'CN'),
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: 0,
-                              height: 1.25,
-                              color: theme.colorScheme.onSurface,
-                            ),
+                    child: NavigationToolbar(
+                      leading: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        widthFactor: 1,
+                        child: Text(
+                          '素材库',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            locale: const Locale('zh', 'CN'),
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0,
+                            height: 1.25,
+                            color: theme.colorScheme.onSurface,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          flex: 4,
-                          child: Row(
-                            key: const ValueKey('library-actions'),
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              if (_selected.isNotEmpty)
-                                Flexible(
-                                  child: Text(
-                                    '已选 ${_selected.length} 项',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                      ),
+                      middle: showSummary
+                          ? TextButton(
+                              key: const ValueKey('export-summary'),
+                              onPressed: _showLogs,
+                              style: TextButton.styleFrom(
+                                minimumSize: Size.zero,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 10,
                                 ),
-                              if (visible.isNotEmpty && preview == null)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                  child: TextButton(
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                      ),
-                                      minimumSize: const Size(0, 40),
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Text(
+                                '导出完成 · 成功 $_success · 失败 $_fail',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            )
+                          : null,
+                      trailing: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: compact ? 225 : 320,
+                        ),
+                        child: Row(
+                          key: const ValueKey('library-actions'),
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            if (_selected.isNotEmpty)
+                              Flexible(
+                                child: Text(
+                                  '已选 ${_selected.length} 项',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            if (visible.isNotEmpty && preview == null)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
+                                child: TextButton(
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
                                     ),
-                                    onPressed: () => setState(() {
-                                      _selected.clear();
-                                      _anchorPath = null;
-                                      if (!allSelected) {
-                                        _selected.addAll(
-                                          visible.map((asset) => asset.path),
-                                        );
-                                      }
-                                    }),
-                                    child: Text(allSelected ? '取消全选' : '全选'),
+                                    minimumSize: const Size(0, 40),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
                                   ),
+                                  onPressed: () => setState(() {
+                                    _selected.clear();
+                                    _anchorPath = null;
+                                    if (!allSelected) {
+                                      _selected.addAll(
+                                        visible.map((asset) => asset.path),
+                                      );
+                                    }
+                                  }),
+                                  child: Text(allSelected ? '取消全选' : '全选'),
                                 ),
-                              Flexible(flex: 3, child: _buildExport()),
-                            ],
-                          ),
+                              ),
+                            Flexible(flex: 3, child: _buildExport()),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
+                  if (_scanning || _exporting)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: LinearProgressIndicator(
+                        value: _exporting ? _doneCount / _totalCount : null,
+                        minHeight: 4,
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
         ),
-        if (_scanning) const LinearProgressIndicator(minHeight: 4),
-        if (_exporting)
-          LinearProgressIndicator(value: _doneCount / _totalCount, minHeight: 4)
-        else if (showSummary)
-          Padding(
-            padding: EdgeInsets.fromLTRB(inset, 0, inset, 8),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                style: TextButton.styleFrom(
-                  backgroundColor: theme.colorScheme.surface,
-                  fixedSize: const Size.fromHeight(40),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onPressed: _showLogs,
-                child: Text('导出完成 · 成功 $_success · 失败 $_fail'),
-              ),
-            ),
-          ),
-      ],
+      ),
     );
     final content = TweenAnimationBuilder<double>(
       key: ValueKey((preview != null, _filter)),
@@ -1176,12 +1187,7 @@ class _HomePageState extends State<HomePage> {
               key: PageStorageKey(_filter),
               padding: EdgeInsets.fromLTRB(
                 inset,
-                toolbarTop +
-                    toolbarHeight +
-                    toolbarBottom +
-                    (_scanning ? 4 : 0) +
-                    (_exporting ? 4 : 0) +
-                    (showSummary ? 48 : 0),
+                toolbarTop + toolbarHeight + toolbarBottom,
                 inset,
                 22,
               ),

@@ -1,7 +1,7 @@
 name: dji_live_gallery
 description: "适用于 DJI Osmo Pocket 4 与 4P 的实况照片工具，支持桌面预览、逐帧选封面，导出 Apple 实况、Android 与华为动态照片。"
 publish_to: 'none'
-version: 2.1.4+1
+version: 2.1.5+1
 
 environment:
   sdk: ^3.13.0

@@ -189,6 +189,57 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('export result is centered without moving the preview', (
+    tester,
+  ) async {
+    const name = 'DJI_20260101000000.jpg';
+    final out = Directory('${work.path}/exports');
+    File('${work.path}/$name').writeAsBytesSync(_landscape);
+    File('${work.path}/config.json').writeAsStringSync(
+      jsonEncode({'cameraDir': work.path, 'outDir': out.path}),
+    );
+    await tester.runAsync(() async {
+      await tester.pumpWidget(gallery());
+      await tester.tap(find.byTooltip('照片'));
+      await _pumpUntil(tester, () => galleryPreview.evaluate().length == 1);
+    });
+    await tester.tap(galleryPreview);
+    await tester.pumpAndSettle();
+
+    final toolbar = find.byKey(const ValueKey('library-toolbar'));
+    final preview = find.byType(PreviewPane);
+    final filmstrip = find.byKey(const ValueKey('preview-library-scrollbar'));
+    final toolbarBefore = tester.getRect(toolbar);
+    final previewBefore = tester.getRect(preview);
+    final filmstripBefore = tester.getRect(filmstrip);
+    final summary = find.text('导出完成 · 成功 1 · 失败 0');
+
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const ValueKey('export-primary')));
+      await _pumpUntil(tester, () => summary.evaluate().isNotEmpty);
+    });
+    await tester.pumpAndSettle();
+    expect(File('${out.path}/photo/$name').readAsBytesSync(), _landscape);
+    expect(tester.getRect(toolbar), toolbarBefore);
+    expect(tester.getRect(preview), previewBefore);
+    expect(tester.getRect(filmstrip), filmstripBefore);
+    expect(tester.getCenter(summary), toolbarBefore.center);
+
+    await tester.binding.setSurfaceSize(const Size(465, 500));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpAndSettle();
+    final title = tester.getRect(find.text('素材库'));
+    final actions = tester.getRect(
+      find.byKey(const ValueKey('library-actions')),
+    );
+    final summaryBounds = tester.getRect(summary);
+    expect(summaryBounds.left, greaterThan(title.right));
+    expect(summaryBounds.right, lessThan(actions.left));
+    await tester.tap(summary);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AlertDialog, '导出日志'), findsOneWidget);
+  });
+
   testWidgets('live timeline selects an exact cover and mute is independent', (
     tester,
   ) async {
