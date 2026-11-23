@@ -62,9 +62,7 @@ class MotionPhotoExporter {
           '-map_chapters',
           '-1',
           '-vf',
-          "scale=w='min(1920,iw)':h='min(1920,ih)':"
-              'force_original_aspect_ratio=decrease:force_divisible_by=2'
-              '${selectedIndex == null ? ',fps=$_huaweiFps' : ''},setsar=1',
+          '${selectedIndex == null ? 'fps=$_huaweiFps,' : ''}setsar=1',
           if (selectedIndex != null) ...[
             '-fps_mode',
             'passthrough',
