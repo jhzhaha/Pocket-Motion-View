@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:math';
+
 import 'package:path/path.dart' as p;
+
 import 'media_metadata.dart';
 import 'models.dart';
 import 'tool_path.dart';
@@ -9,7 +11,7 @@ import 'tool_path.dart';
 ///
 /// 流程（纯 Dart 封装 .HEIC 与 .MOV 定时元数据轨，不依赖外部 exiftool / Perl 进程）：
 /// 1. 从源 MP4 解析设备品牌/型号（如 DJI / DJI OsmoPocket4P）与拍摄时间；
-/// 2. ffmpeg 仅映射第一条视频轨 (-map 0:v:0 -an -sn -dn) 抽取 1.5s 中间帧编码为单帧 Main Profile HEVC (hvc1)，
+/// 2. ffmpeg 仅映射第一条视频轨，将所选封面编码为单帧 Main Profile HEVC (hvc1)，
 ///    由纯 Dart 封装为标准 ISO/IEC 23008-12 原生 .HEIC 文件并写入完整 EXIF 与 Apple MakerNote；
 /// 3. ffmpeg 将原 MP4 无损重封装为纯净 QuickTime MOV 容器（剔除私有 dbgi 轨）；
 /// 4. 纯 Dart 向 .MOV 注入 com.apple.quicktime.still-image-time (mebx) 定时元数据轨与 QuickTime mdta 元数据；
@@ -28,8 +30,10 @@ class LivePhotoExporter {
   Future<(String heic, String mov)> export({
     required MediaAsset asset,
     required String outDir,
+    CoverFrame? cover,
+    bool mute = false,
   }) async {
-    final base = asset.filename.replaceAll(RegExp(r'\.[^.]+$'), '') + 'I';
+    final base = "${asset.filename.replaceAll(RegExp(r'\.[^.]+$'), '')}I";
     final outHeic = p.join(outDir, '$base.HEIC');
     final outMov = p.join(outDir, '$base.MOV');
     final tmpHevcMp4 = p.join(outDir, '.$base.hevc_frame.mp4');
@@ -39,26 +43,34 @@ class LivePhotoExporter {
     final uuid = _newUuid();
     final mp4Info = await MediaMetadata.extractFromMp4(asset.path);
     final shotAt = asset.shotAt ?? mp4Info.creationTime;
-    final deviceLabel = mp4Info.model.toUpperCase().startsWith(mp4Info.make.toUpperCase())
+    final deviceLabel =
+        mp4Info.model.toUpperCase().startsWith(mp4Info.make.toUpperCase())
         ? mp4Info.model
         : '${mp4Info.make} ${mp4Info.model}';
 
-    // 1) 抽取 1.5s 中间帧编码为单帧 HEVC Main Profile (hvc1)，并由纯 Dart 封装为带完整 EXIF + Apple MakerNote 的原生 .HEIC
+    // 1) 将封面帧编码为单帧 HEVC Main Profile (hvc1)，再封装为 .HEIC。
     // 注意：必须加 -map 0:v:0 -an -sn -dn 排除音轨/字幕/数据轨，且不能在 x265-params 中设置 keyint=1（否则 x265 会切换为
     // RExt Profile 4 导致 macOS/iOS 硬件解码器拒绝显示；单帧 -frames:v 1 默认首帧即为 Main Profile IDR 关键帧）。
     _log('生成原生 HEIC 封面: $base ($deviceLabel)');
+    double? coverTimeSeconds = cover == null
+        ? null
+        : cover.position.inMicroseconds / 1000000;
     try {
       await _encodeSingleHevcFrame(
         inputPath: asset.path,
         outputMp4Path: tmpHevcMp4,
         seekSeconds: '1.5',
+        frameIndex: cover?.index,
       );
-      if (!File(tmpHevcMp4).existsSync() || File(tmpHevcMp4).lengthSync() < 4096) {
+      if (cover == null &&
+          (!File(tmpHevcMp4).existsSync() ||
+              File(tmpHevcMp4).lengthSync() < 4096)) {
         await _encodeSingleHevcFrame(
           inputPath: asset.path,
           outputMp4Path: tmpHevcMp4,
           seekSeconds: '0',
         );
+        coverTimeSeconds = 0;
       }
 
       await MediaMetadata.buildHeicFromHevcMp4(
@@ -80,14 +92,20 @@ class LivePhotoExporter {
     // 2) 先用 ffmpeg 零重编码重封装为标准 QuickTime MOV（仅保留视频轨与音频轨，清理相机私有数据轨）
     await _run('ffmpeg', [
       '-y',
-      '-i', asset.path,
-      '-map', '0:v:0',
-      '-map', '0:a?',
-      '-c', 'copy',
-      '-f', 'mov',
+      '-i',
+      asset.path,
+      '-map',
+      '0:v:0',
+      if (!mute) ...['-map', '0:a?'],
+      '-c',
+      'copy',
+      '-f',
+      'mov',
       tmpRemuxMov,
-    ]);
-    final movSourcePath = File(tmpRemuxMov).existsSync() ? tmpRemuxMov : asset.path;
+    ], mustSucceed: mute);
+    final movSourcePath = File(tmpRemuxMov).existsSync()
+        ? tmpRemuxMov
+        : asset.path;
 
     // 3) 纯 Dart 生成最终 MOV：写入 still-image-time 定时元数据轨、QuickTime Keys:ContentIdentifier、设备信息与轨道时间戳
     try {
@@ -98,7 +116,7 @@ class LivePhotoExporter {
         make: mp4Info.make,
         model: mp4Info.model,
         shotAt: shotAt,
-        coverTimeSeconds: 1.5,
+        coverTimeSeconds: coverTimeSeconds,
       );
     } finally {
       try {
@@ -129,30 +147,39 @@ class LivePhotoExporter {
     required String inputPath,
     required String outputMp4Path,
     required String seekSeconds,
+    int? frameIndex,
   }) async {
-    await _run(
-      'ffmpeg',
-      [
-        '-y',
-        '-ss', seekSeconds,
-        '-i', inputPath,
-        '-map', '0:v:0',
-        '-an',
-        '-sn',
-        '-dn',
-        '-frames:v', '1',
-        '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
-        '-c:v', 'libx265',
-        '-profile:v', 'main',
-        '-preset', 'fast',
-        '-crf', '16',
-        '-x265-params', 'log-level=error:bframes=0:ref=1',
-        '-pix_fmt', 'yuv420p',
-        '-tag:v', 'hvc1',
-        outputMp4Path,
-      ],
-      mustSucceed: seekSeconds == '0',
-    );
+    final selectFrame = frameIndex == null ? '' : 'select=eq(n\\,$frameIndex),';
+    await _run('ffmpeg', [
+      '-y',
+      if (frameIndex == null) ...['-ss', seekSeconds],
+      '-i',
+      inputPath,
+      '-map',
+      '0:v:0',
+      '-an',
+      '-sn',
+      '-dn',
+      '-frames:v',
+      '1',
+      '-vf',
+      '${selectFrame}scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
+      '-c:v',
+      'libx265',
+      '-profile:v',
+      'main',
+      '-preset',
+      'fast',
+      '-crf',
+      '16',
+      '-x265-params',
+      'log-level=error:bframes=0:ref=1',
+      '-pix_fmt',
+      'yuv420p',
+      '-tag:v',
+      'hvc1',
+      outputMp4Path,
+    ], mustSucceed: frameIndex != null || seekSeconds == '0');
   }
 
   static final Random _rng = Random();
@@ -165,9 +192,15 @@ class LivePhotoExporter {
     return [
       for (var i = 0; i < 4; i++) hex(r[i]),
       '-',
-      hex(r[4]), hex(r[5]), '-',
-      hex(r[6]), hex(r[7]), '-',
-      hex(r[8]), hex(r[9]), '-',
+      hex(r[4]),
+      hex(r[5]),
+      '-',
+      hex(r[6]),
+      hex(r[7]),
+      '-',
+      hex(r[8]),
+      hex(r[9]),
+      '-',
       for (var i = 10; i < 16; i++) hex(r[i]),
     ].join().toUpperCase();
   }
@@ -180,7 +213,11 @@ class LivePhotoExporter {
       '${dt.minute.toString().padLeft(2, '0')}:'
       '${dt.second.toString().padLeft(2, '0')}';
 
-  Future<void> _run(String exe, List<String> args, {bool mustSucceed = false}) async {
+  Future<void> _run(
+    String exe,
+    List<String> args, {
+    bool mustSucceed = false,
+  }) async {
     final p = await Process.run(ToolPath.find(exe), args);
     if (p.exitCode != 0) {
       _log('  !! $exe 失败: ${p.stderr}');

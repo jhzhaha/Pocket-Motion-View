@@ -1,6 +1,10 @@
 /// 媒体资产类型
 enum MediaKind { livePhoto, video, photo }
 
+const defaultCoverPosition = Duration(milliseconds: 1500);
+
+typedef CoverFrame = ({Duration position, int index});
+
 /// 一个媒体文件（实况是 MP4，导出时再拆成 JPG+MOV）
 class MediaAsset {
   final String path;
@@ -9,6 +13,10 @@ class MediaAsset {
   final DateTime? shotAt; // 拍摄时间（北京时间）
   final int sizeBytes;
   final String? template; // 相机写入的 TPLG 模板串（调试用）
+  final double? aspectRatio;
+
+  bool get isRawPhoto =>
+      kind == MediaKind.photo && filename.toLowerCase().endsWith('.dng');
 
   const MediaAsset({
     required this.path,
@@ -17,13 +25,14 @@ class MediaAsset {
     required this.shotAt,
     required this.sizeBytes,
     this.template,
+    this.aspectRatio,
   });
 
   String get kindLabel => switch (kind) {
-        MediaKind.livePhoto => '实况',
-        MediaKind.video => '视频',
-        MediaKind.photo => '照片',
-      };
+    MediaKind.livePhoto => '实况',
+    MediaKind.video => '视频',
+    MediaKind.photo => '照片',
+  };
 
   /// 友好参数：从模板串解析分辨率/帧率，如 "4K / 29.97 fps"
   String get friendlySpec {

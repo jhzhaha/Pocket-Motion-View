@@ -2,6 +2,9 @@
 
 #include <optional>
 
+#include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
+
 #include "flutter/generated_plugin_registrant.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -26,6 +29,36 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+
+  flutter::MethodChannel<> window_channel(
+      flutter_controller_->engine()->messenger(), "pocket_motion/window",
+      &flutter::StandardMethodCodec::GetInstance());
+  window_channel.SetMethodCallHandler([this](const auto& call, auto result) {
+    const HWND window = GetHandle();
+    const std::string& method = call.method_name();
+    if (method == "isMaximized") {
+      result->Success(flutter::EncodableValue(IsZoomed(window) != FALSE));
+    } else if (method == "toggleMaximize") {
+      ShowWindow(window, IsZoomed(window) ? SW_RESTORE : SW_MAXIMIZE);
+      result->Success(flutter::EncodableValue(IsZoomed(window) != FALSE));
+    } else if (method == "minimize") {
+      ShowWindow(window, SW_MINIMIZE);
+      result->Success();
+    } else if (method == "close") {
+      PostMessage(window, WM_CLOSE, 0, 0);
+      result->Success();
+    } else if (method == "drag") {
+      POINT cursor;
+      if (GetCursorPos(&cursor)) {
+        ReleaseCapture();
+        PostMessage(window, WM_NCLBUTTONDOWN, HTCAPTION,
+                    MAKELPARAM(cursor.x, cursor.y));
+      }
+      result->Success();
+    } else {
+      result->NotImplemented();
+    }
+  });
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();

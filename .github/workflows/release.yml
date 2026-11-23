@@ -206,7 +206,7 @@ jobs:
           flutter-version: '3.47.0'
       - run: flutter pub get
       - run: flutter build windows --release
-      - name: Bundle VC++ Runtime DLLs and ffmpeg
+      - name: Bundle VC++ Runtime DLLs and FFmpeg tools
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -220,12 +220,22 @@ jobs:
             }
           }
 
-          curl.exe -fL --retry 3 "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -o ffmpeg.zip
+          $version = "9.1"
+          $checksum = "b9bbbb3acece000cbeec994f856649354e52c773807841e78908374b24d658fd"
+          curl.exe -fL --retry 3 "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-$version-essentials_build.zip" -o ffmpeg.zip
+          if ($LASTEXITCODE -ne 0 -or (Get-FileHash ffmpeg.zip).Hash -ne $checksum) {
+            throw "FFmpeg download or checksum verification failed"
+          }
           Expand-Archive -LiteralPath ffmpeg.zip -DestinationPath ffmpeg_tmp -Force
-          $ffExe = Get-ChildItem ffmpeg_tmp -Recurse -File -Filter "ffmpeg.exe" | Select-Object -First 1
-          if (-not $ffExe) { throw "ffmpeg.exe not found in archive" }
-          Copy-Item -LiteralPath $ffExe.FullName -Destination "$release/ffmpeg.exe" -Force
-          & "$release/ffmpeg.exe" -version | Select-Object -First 1
+          $tools = "ffmpeg_tmp/ffmpeg-$version-essentials_build"
+          foreach ($name in @("ffmpeg.exe", "ffplay.exe")) {
+            Copy-Item -LiteralPath "$tools/bin/$name" -Destination "$release/$name" -Force
+            & "$release/$name" -version | Select-Object -First 1
+            if ($LASTEXITCODE -ne 0) { throw "$name could not start" }
+          }
+          Copy-Item -LiteralPath "$tools/LICENSE" -Destination "$release/FFmpeg-LICENSE.txt"
+          Copy-Item -LiteralPath "$tools/README.txt" -Destination "$release/FFmpeg-README.txt"
+          Copy-Item -LiteralPath LICENSE -Destination "$release/LICENSE.txt"
       - name: Zip
         shell: pwsh
         run: |

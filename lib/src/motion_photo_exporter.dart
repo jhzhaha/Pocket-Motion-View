@@ -1,15 +1,20 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:path/path.dart' as p;
+
 import 'media_metadata.dart';
 import 'models.dart';
 import 'tool_path.dart';
 
-/// Google Motion Photo 导出器。
-///
-/// 输出**单个 .jpg 文件**：结构 = [JPEG(含标准 EXIF APP1 + Google XMP APP1)] + [MP4字节]
-/// 纯 Dart 直接从源 MP4 提取设备型号与拍摄时间并写入 EXIF，不依赖外部 exiftool 进程。
+enum MotionPhotoFormat { google, huawei }
+
+/// 将实况导出为包含封面和视频的单个 JPEG 文件。
 class MotionPhotoExporter {
+  static const _huaweiFps = 30;
+  static const _huaweiTagWidth = 20;
+
   final void Function(String log)? onLog;
   MotionPhotoExporter({this.onLog});
   void _log(String s) {
@@ -19,36 +24,144 @@ class MotionPhotoExporter {
   Future<String> export({
     required MediaAsset asset,
     required String outDir,
+    MotionPhotoFormat format = MotionPhotoFormat.google,
+    CoverFrame? cover,
+    bool mute = false,
   }) async {
-    await Directory(outDir).create(recursive: true);
-    final base = asset.filename.replaceAll(RegExp(r'\.[^.]+$'), '') + 'A';
+    final directory = await Directory(outDir).create(recursive: true);
+    final base = "${asset.filename.replaceAll(RegExp(r'\.[^.]+$'), '')}A";
     final outPath = p.join(outDir, '$base.jpg');
-    final tmpJpg = p.join(outDir, '.$base.still.jpg');
 
     final mp4Info = await MediaMetadata.extractFromMp4(asset.path);
     final shotAt = asset.shotAt ?? mp4Info.creationTime;
-    final deviceLabel = mp4Info.model.toUpperCase().startsWith(mp4Info.make.toUpperCase())
+    final deviceLabel =
+        mp4Info.model.toUpperCase().startsWith(mp4Info.make.toUpperCase())
         ? mp4Info.model
         : '${mp4Info.make} ${mp4Info.model}';
 
-    // 1) 抽中间帧为纯 JPEG
-    _log('抽帧: $base ($deviceLabel)');
-    final res = await Process.run(ToolPath.find('ffmpeg'), [
-      '-y', '-ss', '1.5', '-i', asset.path,
-      '-frames:v', '1', '-q:v', '2', '-update', '1', tmpJpg,
-    ]);
-    if (res.exitCode != 0) {
-      _log('  !! ffmpeg 失败: ${res.stderr}');
-      throw Exception('ffmpeg 抽帧失败 (exit ${res.exitCode})');
-    }
-
+    final scratch = await directory.createTemp('.motion-');
     try {
-      // 2) 读静态 JPEG 和原 MP4
+      var videoPath = asset.path;
+      var position = cover?.position ?? defaultCoverPosition;
+      final selectedIndex = cover?.index;
+      Uint8List? huaweiTail;
+      if (format == MotionPhotoFormat.huawei) {
+        final encoded = p.join(scratch.path, 'encoded.mp4');
+        videoPath = p.join(scratch.path, 'huawei.mp4');
+        _log('编码华为动态视频: $base');
+        final progress = await _ffmpeg('编码华为动态视频', [
+          '-progress',
+          'pipe:1',
+          '-i',
+          asset.path,
+          '-map',
+          '0:v:0',
+          if (!mute) ...['-map', '0:a:0?'],
+          '-map_metadata',
+          '-1',
+          '-map_chapters',
+          '-1',
+          '-vf',
+          "scale=w='min(1920,iw)':h='min(1920,ih)':"
+              'force_original_aspect_ratio=decrease:force_divisible_by=2'
+              '${selectedIndex == null ? ',fps=$_huaweiFps' : ''},setsar=1',
+          if (selectedIndex != null) ...[
+            '-fps_mode',
+            'passthrough',
+            '-enc_time_base:v',
+            'demux',
+          ],
+          '-c:v',
+          'libx264',
+          '-pix_fmt',
+          'yuv420p',
+          '-preset',
+          'fast',
+          '-crf',
+          '18',
+          if (!mute) ...['-c:a', 'aac', '-ac', '2', '-b:a', '160k'],
+          encoded,
+        ]);
+        final frames = RegExp(
+          r'^frame=\s*(\d+)',
+          multiLine: true,
+        ).allMatches(progress).lastOrNull?.group(1);
+        final frameCount = int.tryParse(frames ?? '') ?? 0;
+        if (frameCount == 0) throw StateError('动态视频没有可用帧');
+        final preferredFrame =
+            (defaultCoverPosition.inMilliseconds * _huaweiFps / 1000).round();
+        final coverFrame =
+            selectedIndex ??
+            (frameCount > preferredFrame ? preferredFrame : frameCount ~/ 2);
+        if (coverFrame >= frameCount) throw StateError('所选封面超出视频范围');
+        if (selectedIndex == null) {
+          position = Duration(microseconds: coverFrame * 1000000 ~/ _huaweiFps);
+        }
+
+        await _ffmpeg('写入华为封面时间', [
+          '-i',
+          encoded,
+          '-map',
+          '0',
+          '-c',
+          'copy',
+          '-brand',
+          'mp42',
+          '-movflags',
+          '+faststart+use_metadata_tags',
+          '-metadata',
+          'com.openharmony.covertime=${(position.inMicroseconds / 1000).toStringAsFixed(3)}',
+          videoPath,
+        ]);
+        // 华为 v6 格式的 60 字节尾标有三个等宽字段，长度包含首个字段。
+        huaweiTail = Uint8List.fromList(
+          ascii.encode(
+            [
+              'v6_f$coverFrame',
+              '$coverFrame:$frameCount',
+              'LIVE_${await File(videoPath).length() + _huaweiTagWidth}',
+            ].map((tag) => tag.padRight(_huaweiTagWidth)).join(),
+          ),
+        );
+      } else if (mute) {
+        videoPath = p.join(scratch.path, 'silent.mp4');
+        await _ffmpeg('移除音轨', [
+          '-i',
+          asset.path,
+          '-map',
+          '0:v:0',
+          '-c',
+          'copy',
+          '-movflags',
+          '+faststart',
+          videoPath,
+        ]);
+      }
+
+      final tmpJpg = p.join(scratch.path, 'still.jpg');
+      _log('抽帧: $base ($deviceLabel)');
+      await _ffmpeg('抽帧', [
+        if (selectedIndex == null) ...[
+          '-ss',
+          (position.inMicroseconds / 1000000).toStringAsFixed(6),
+        ],
+        '-i',
+        videoPath,
+        '-map',
+        '0:v:0',
+        if (selectedIndex != null) ...['-vf', 'select=eq(n\\,$selectedIndex)'],
+        '-frames:v',
+        '1',
+        '-q:v',
+        '2',
+        '-update',
+        '1',
+        tmpJpg,
+      ]);
       var jpg = await File(tmpJpg).readAsBytes();
-      final mp4 = await File(asset.path).readAsBytes();
+      final mp4 = File(videoPath);
       final dims = MediaMetadata.extractJpegDimensions(jpg);
 
-      // 3) 纯 Dart 构造 EXIF APP1 段（设备品牌/型号、拍摄时间、宽高）与 Google Motion Photo XMP APP1 段并注入 SOI 之后
       final exifApp1 = MediaMetadata.buildExifApp1Segment(
         make: mp4Info.make,
         model: mp4Info.model,
@@ -57,36 +170,67 @@ class MotionPhotoExporter {
         imageWidth: dims?.$1,
         imageHeight: dims?.$2,
       );
-      final xmpApp1 = _buildXmpSegment(mp4Length: mp4.length);
-      jpg = MediaMetadata.injectIntoJpeg(jpg, [exifApp1, xmpApp1]);
+      jpg = MediaMetadata.injectIntoJpeg(jpg, [
+        exifApp1,
+        if (format == MotionPhotoFormat.google)
+          _buildXmpSegment(
+            mp4Length: await mp4.length(),
+            presentationUs: position.inMicroseconds,
+          ),
+      ]);
 
-      // 4) 拼接：JPEG + MP4
-      final out = BytesBuilder()
-        ..add(jpg)
-        ..add(mp4);
-      await File(outPath).writeAsBytes(out.toBytes());
+      final staged = File(p.join(scratch.path, 'export.jpg'));
+      final out = staged.openWrite();
+      try {
+        out.add(jpg);
+        await out.addStream(mp4.openRead());
+        if (huaweiTail != null) out.add(huaweiTail);
+      } finally {
+        await out.close();
+      }
+      await staged.rename(outPath);
     } finally {
       try {
-        if (File(tmpJpg).existsSync()) {
-          File(tmpJpg).deleteSync();
-        }
-      } catch (_) {}
+        await scratch.delete(recursive: true);
+      } on FileSystemException catch (_) {}
     }
 
-    // 5) 文件系统时间归位
     if (shotAt != null) {
       try {
         await File(outPath).setLastModified(shotAt);
       } catch (_) {}
     }
 
-    _log('完成: $base.jpg (Motion Photo)');
+    final formatLabel = switch (format) {
+      MotionPhotoFormat.google => 'Google Motion Photo',
+      MotionPhotoFormat.huawei => '华为动态照片',
+    };
+    _log('完成: $base.jpg ($formatLabel)');
     return outPath;
   }
 
-  Uint8List _buildXmpSegment({required int mp4Length}) {
-    const presentationUs = 1500000;
-    final xml = '''<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Pocket Motion">
+  Future<String> _ffmpeg(String action, List<String> args) async {
+    final result = await Process.run(ToolPath.find('ffmpeg'), [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-nostdin',
+      '-y',
+      ...args,
+    ]);
+    if (result.exitCode != 0) {
+      _log('  !! ffmpeg: ${result.stderr}');
+      throw Exception('$action失败 (exit ${result.exitCode})');
+    }
+    return result.stdout as String;
+  }
+
+  Uint8List _buildXmpSegment({
+    required int mp4Length,
+    required int presentationUs,
+  }) {
+    final xml =
+        '''<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Pocket Motion">
  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
   <rdf:Description rdf:about=""
     xmlns:GCamera="http://ns.google.com/photos/1.0/camera/"
@@ -117,8 +261,7 @@ class MotionPhotoExporter {
 </x:xmpmeta>''';
 
     final prefix = 'http://ns.adobe.com/xap/1.0/\x00';
-    final content = Uint8List.fromList(
-        [...prefix.codeUnits, ...xml.codeUnits]);
+    final content = Uint8List.fromList([...prefix.codeUnits, ...xml.codeUnits]);
     final segLen = content.length + 2;
     final b = BytesBuilder()
       ..add([0xFF, 0xE1])

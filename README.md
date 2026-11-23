@@ -1,150 +1,43 @@
-<div align="center">
-
 # Pocket Motion
 
-**专为大疆 DJI Mimo 生态下的 Osmo Pocket 4P 打造的全平台实况照片（Live Photo / Motion Photo）与媒体无损导出工具**
+Pocket Motion 从 DJI Osmo Pocket 4 和 Pocket 4P 的相机素材恢复实况照片，并提供桌面预览和批量导出。此项目源自 [MicageEritc/Pocket-Motion](https://github.com/MicageEritc/Pocket-Motion)。
 
-[![Version](https://img.shields.io/badge/Version-v2.1.1-0A84FF?style=flat-square)](#)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-4A90E2?style=flat-square)](#)
-[![Flutter](https://img.shields.io/badge/Built%20with-Flutter%203.24-02569B?style=flat-square&logo=flutter)](#)
-[![Device](https://img.shields.io/badge/Tested%20on-Osmo%20Pocket%204P-FF9F0A?style=flat-square)](#)
-[![License](https://img.shields.io/badge/License-MIT-2ECC71?style=flat-square)](#)
+## Windows 便携版
 
-针对 DJI Mimo 拍摄的 Osmo Pocket 4P 素材，将 SD 卡或本地目录中的文件一键导出为 **Apple 实况照片（原生 `.HEIC + .MOV`）**、**Google 动态照片（`.jpg`）**、**原片视频（`.MP4`）** 与 **高清照片（`.JPG`）**，支持 macOS 与 Windows 双平台开箱即用，完整保留原片画质、真实拍摄设备型号、时间戳与 iPhone 相册原生交互体验。
+在 [Releases](../../releases) 下载 Windows x64 ZIP，解压整个文件夹后运行 `PocketMotion.exe`。支持 Windows 10 和 11。
 
-> **兼容性提示**：本项目基于 DJI Osmo Pocket 4P 实机开发与验证，仅在该机型上确认可用；其他 Osmo Pocket 机型未做实测，兼容性不确定。
+1. 在左下角齿轮菜单里设置素材来源和导出位置。素材库按实况、视频、照片分类。
+2. 点击卡片预览，勾选右上角复选框选中素材。可按住 Shift 连选，也可在右上角全选。
+3. 实况胶片可以拖动逐帧定位，再点击「设为封面」。实况和普通视频的静音开关按素材设置，导出时同步应用。
+4. 实况的格式通过导出按钮旁的箭头切换。点击主按钮会使用上次选定的格式。
 
-</div>
+| 导出格式 | 文件 | 目录 |
+| --- | --- | --- |
+| Apple 实况 | 配对的 HEIC 和 MOV | `live/` |
+| Android 动态照片 | 带内嵌视频的 JPG | `live/` |
+| 华为动态照片 | 带内嵌视频的 JPG | `live/huawei/` |
+| 视频 | MP4 | `movie/` |
+| 照片 | 原文件 | `photo/` |
 
-## 兼容性说明
+将 Apple 实况的配对文件一起导入 Apple 照片。华为动态照片可通过 USB 或华为分享传原文件，在图库中长按试播。
 
-本项目是围绕 **DJI Osmo Pocket 4P** 一台机器做的，没有其他 Pocket 机型的样机可测，所以下面的边界请先看清楚再上手。
+## 兼容性
 
-| 机型 | 状态 |
-| :--- | :--- |
-| **DJI Osmo Pocket 4P** | 已实机验证，开发与测试基准机型，全部功能可用 |
-| 其他 Osmo Pocket 机型（如 Pocket 1 / 2 / 3 等） | 未验证，兼容性未知，不保证可用 |
+- Pocket 4 和 Pocket 4P 根据原视频中的 DJI 实况模板识别。Pocket 4 素材在 Windows 上验证过识别和导出。Pocket 4P 是上游项目的实机验证基准。
+- 华为动态照片试播样本已在 Mate 60（HarmonyOS 7.0）图库确认播放。
+- Windows 是此版本的验证平台。仓库也保留了上游的 macOS 工程。
 
-具体不确定的几处：
+## 本地构建
 
-- **素材路径按 4P 的默认结构处理**：macOS 默认定位到 `/Volumes/Pocket4P/DCIM/DJI_001`，Windows 默认定位到 `D:\DCIM\DJI_001`；如果卷名、盘符或子目录不一样，需要手动指定素材源目录。
-- **设备型号靠解析源 `.MP4` 元数据得到**，解析不到时回退写入默认机型 `DJI OsmoPocket4P`，因此接其他机型导出时，元数据里的机型可能不准确。
-- **Apple 实况封面帧固定从原视频 `1.5s` 处抽取**，这个时间点是按 4P 拍摄素材的节奏标定的；其他机型的实况时长或节奏若不同，自动选的封面帧可能不是最理想的一帧（导入 iPhone 后仍可在相册里手动重选）。
-- **实况判定阈值固定为 `≤ 4.0s`**，同样是按 4P 的拍摄习惯设定的。
-
-建议：在其他机型上先拿几条素材试导一遍，确认 `live/` 里的 `.HEIC + .MOV` 能在 iPhone 上正常合并播放，再批量处理。遇到问题欢迎提 Issue，并附上一段原始素材样本，方便定位差异。
-
-## 核心特性
-
-- **Apple Live Photo 原生 `.HEIC + .MOV` 实况合成**
-  - 自动从原视频 `1.5s` 处抽取中间帧编码为单帧 `HEVC Main Profile (hvc1)`，由纯 Dart 引擎封装为符合 ISO/IEC 23008-12 标准的原生 `.HEIC` 静态封面（`<文件名>I.HEIC`），配合零重编码重封装的 `.MOV` 动态轨（`<文件名>I.MOV`）。
-  - **支持 iPhone 相册滑动自动播放（Vitality）**：内置 `LivePhotoAuto` 与 `VitalityScore` 元数据及完整 Apple `MakerNote`（`ContentIdentifier`、`RunTime`、`AccelerationVector`、`PhotoIdentifier`、`MediaGroupUUID`），在 iPhone 相册左右滑动时即可自动丝滑播放动态效果，无需长按。
-  - **支持 iPhone 相册「编辑」任意重选封面帧**：在 `.MOV` 中由纯 Dart 原生构建并注入 `com.apple.quicktime.still-image-time`（`mebx`）定时元数据轨道及 `tref -> cdsc` 关联引用，完美激活 iOS 系统相册底部的「设为主要照片」逐帧选封面滑块。
-  - **完美兼容大疆 Mimo 二次编辑**：将 `still-image-time` 轨道时间锚点精准对齐至 `1.5s` 封面帧，通过大疆 Mimo 套滤镜或调色二次导出后封面不会跳回第 0 秒首帧，且二次导出后依然支持在 iPhone 相册中重选封面帧。
-
-- **Google Motion Photo 单文件动态照片**
-  - 采用 MicroVideo XMP + GCamera 标准规范，将封面图与原 MP4 视频流无损拼接为单张 `.jpg` 文件。
-  - 原生兼容 Google 相册、小米、OPPO、vivo、一加、三星、华为等主流 Android 机型相册。
-
-- **实况 / 视频 / 照片全类型分类导出**
-  - **实况模式**：左下方可切换导出为「Apple 实况 (`.HEIC+.MOV`)」或「Google 动态图 (`.jpg`)」，自动归档至导出目录下的 **`live/`** 文件夹。
-  - **视频模式**：左侧面板自动切换为「导出视频」，将选中的原片 `.MP4` 无损复制归档至导出目录下的 **`movie/`** 文件夹，并完整保留拍摄创建时间与修改时间。
-  - **照片模式**：左侧面板自动切换为「导出照片」，将选中的原片 `.JPG` 无损复制归档至导出目录下的 **`photo/`** 文件夹，并完整保留原图时间属性。
-
-- **自动抓取源文件真实设备信息**
-  - 纯 Dart 引擎直接解析源 `.MP4` 容器中的 QuickTime 元数据原子与大疆固件签名，自动提取真实拍摄设备品牌与型号——当前以 `DJI OsmoPocket4P` 为实测基准，型号解析失败时回退写入该默认值；同时读取原始拍摄时间及时区信息。
-  - 导出的 Apple `.HEIC`、`.MOV` 以及 Google `.jpg` 均写入真实相机型号与拍摄时间，绝不写死虚拟手机型号。
-
-- **纯 Dart 元数据与容器引擎 + 独立内置 FFmpeg 动态库（彻底兼容全系统与中文路径）**
-  - 移除对外部 `exiftool` / Perl 进程的依赖，所有 `.HEIC` 容器组装、TIFF/EXIF/MakerNote 构造、XMP 注入与 `.MOV` 定时元数据轨道写入均由纯 Dart 内存级完成。
-  - macOS 安装包已将 `ffmpeg` 及其所有底层 `.dylib` 动态库完整内置至 `Contents/Resources/lib/` 并完成 `@executable_path` 重定向签名，**无需用户电脑安装 Homebrew 或任何依赖库**，彻底杜绝在其他 Mac（如 macOS 26.6.2）上出现 `dyld: Library not loaded` 报错，且 100% 兼容包含中文、空格或特殊符号的文件夹路径。
-
-- **Shift 区间连选 & 目录记忆**
-  - **Shift 快捷多选**：点击任意卡片作为起点，按住键盘 `Shift` 键再点击目标卡片，即可一键选中或取消头尾之间的全部素材；点击顶部「刷新」按钮时自动清空已选状态。
-  - **智能目录记忆**：自动记住上次选择的「素材源目录」与「导出位置」，下次启动软件直接恢复，无需重复选择。
-  - **智能实况识别**：自动识别时长 `≤ 4.0s` 的短片为「实况」素材并归入「实况」标签页。
-
-## 系统支持与安装
-
-可在项目的 [**Releases**](../../releases) 页面直接下载对应系统的最新打包版本：
-
-| 平台 | 架构要求 | 安装包格式 | 内置组件说明 |
-| :--- | :--- | :--- | :--- |
-| **macOS** | Apple Silicon / Intel (macOS 11.0+) | `Pocket-Motion-macOS-v*.dmg` | 已完整内置 `ffmpeg` 及全套依赖 `.dylib`，拖拽至 `Applications` 即可脱机运行 |
-| **Windows** | Windows 10 / 11 (64-bit x86_64) | `Pocket-Motion-Windows-v*.zip` | 已内置 `ffmpeg.exe`，解压后双击 `Pocket Motion.exe` 即可运行 |
-
-> **macOS 首次打开提示**：若系统提示“无法验证开发者”，请在终端执行以下命令放行，或在「系统设置 → 隐私与安全性」中点击“仍要打开”：
-> ```bash
-> xattr -cr "/Applications/Pocket Motion.app"
-> ```
-
-## 使用指南
-
-1. **连接素材源**
-   - 将 DJI Osmo Pocket 4P 的 SD 卡插入电脑（或通过 USB-C 连接相机）；软件默认定位到 `Volumes/Pocket4P/DCIM/DJI_001`（macOS）或 `D:\DCIM\DJI_001`（Windows）。
-   - 若卷名、盘符或子目录与默认不一致，点击左侧 **「素材源目录 → 选择…」** 手动指定 `DCIM` 目录即可（路径会自动保存）。
-2. **筛选与多选素材**
-   - 在顶部标签栏切换 **「实况」**（`≤ 4.0s` 短视频）、**「视频」** 或 **「照片」**。
-   - 单击卡片可逐个勾选；选中第一个素材后，**按住 `Shift` 键点击末尾素材**即可快速选中整段区间；也可点击右上角 **「全选当前」**。
-3. **设置导出目录与开始导出**
-   - 在左侧 **「导出位置」** 选择保存目录（同样会自动记忆）。
-   - 若当前在 **「实况」** 标签页，可在左下角选择 **「Apple 实况 (.HEIC+.MOV)」** 或 **「Google 动态图 (.jpg)」**。
-   - 点击右下角导出按钮，导出的文件将自动按类型归类存放至导出目录下的子文件夹中：
-     - 实况照片：`导出目录/live/`
-     - 视频文件：`导出目录/movie/`
-     - 照片文件：`导出目录/photo/`
-4. **导入手机相册**
-   - **iPhone / iPad / Mac 用户**：将 `live/` 目录下配对的 `<文件名>I.HEIC` 与 `<文件名>I.MOV` **同时选中**，通过 AirDrop（隔空投送）发送至 iPhone，或直接拖入 macOS「照片 (Photos.app)」图库，即可自动合并为支持滑动自动播放、编辑重选封面帧的原生 Live Photo。
-   - **Android 用户**：将 `live/` 目录下生成的 `.jpg` 文件直接发送到手机，在系统相册或 Google 相册中打开即可播放动态照片。
-
-## 开发者本地构建
-
-### 环境要求
-- Flutter SDK `>= 3.24.0`（Dart `>= 3.4.0`）
-- **macOS 开发环境**：Xcode 15+，本地调试可安装 `brew install ffmpeg`
-- **Windows 开发环境**：Visual Studio 2022（含“使用 C++ 的桌面开发”工作负载）
-
-### 常用命令
+使用 Flutter 3.47.0。Windows 需要带「使用 C++ 的桌面开发」工作负载的 Visual Studio，macOS 需要 Xcode。
 
 ```bash
-# 1. 获取依赖
 flutter pub get
-
-# 2. 代码静态检查
 flutter analyze
-
-# 3. 本地运行调试 (macOS)
-flutter run -d macos
-
-# 4. 本地运行调试 (Windows)
-flutter run -d windows
-
-# 5. 构建 Release 正式版
-flutter build macos --release
+flutter test
 flutter build windows --release
 ```
 
-## 项目目录结构
+Windows 便携包使用独立的 FFmpeg 9.1 Essentials 工具。手动构建时可以将 `ffmpeg.exe` 和 `ffplay.exe` 放在应用旁，或通过 PATH 提供。构建配置、GPL v3 许可证和源码版本可在 Gyan 的发行包中找到。[Windows 工具发行包](https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.1-essentials_build.zip) · [FFmpeg 源码](https://github.com/FFmpeg/FFmpeg/tree/74e4393595)
 
-```text
-Pocket-Motion/
-├── .github/workflows/
-│   └── release.yml                # GitHub Actions 双平台自动构建与动态库打包流水线
-├── lib/
-│   ├── main.dart                  # Flutter 桌面端主界面（Shift 连选、目录记忆、三模式导出）
-│   └── src/
-│       ├── media_scanner.dart     # 相机 DCIM 目录媒体扫描器（自动识别 ≤4.0s 实况素材）
-│       ├── live_photo_exporter.dart   # Apple Live Photo (.HEIC + .MOV) 导出器
-│       ├── motion_photo_exporter.dart # Google Motion Photo (.jpg) 导出器
-│       ├── media_metadata.dart    # 纯 Dart 媒体元数据与原生 HEIC / MOV still-image-time 引擎
-│       ├── models.dart            # 媒体资产数据模型与格式化工具
-│       ├── thumbnail_image.dart   # 卡片缩略图（调用 ffmpeg 抽帧并缓存到临时目录）
-│       └── tool_path.dart         # 跨平台内置工具路径解析器
-├── macos/                         # macOS 原生工程配置与应用图标
-├── windows/                       # Windows 原生工程配置、应用图标与版本资源
-└── pubspec.yaml                   # Flutter 依赖与版本配置 (v2.1.1)
-```
-
-## 开源协议
-
-本项目基于 [MIT License](LICENSE) 开源发布。
+Pocket Motion 依据上游声明使用 [MIT License](LICENSE)。

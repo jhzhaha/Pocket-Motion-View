@@ -1,7 +1,9 @@
 #include "win32_window.h"
 
+#include <commctrl.h>
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <windowsx.h>
 
 #include "resource.h"
 
@@ -17,6 +19,45 @@ namespace {
 #endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
+// DWMWA_BORDER_COLOR and DWMWA_COLOR_NONE on Windows 11.
+constexpr DWORD kDwmBorderColor = 34;
+constexpr COLORREF kDwmColorNone = 0xFFFFFFFE;
+
+LRESULT ResizeHitTest(HWND window, LPARAM position) {
+  if (IsZoomed(window)) return HTCLIENT;
+
+  RECT bounds;
+  if (!GetWindowRect(window, &bounds)) return HTCLIENT;
+  const POINT point{GET_X_LPARAM(position), GET_Y_LPARAM(position)};
+  if (!PtInRect(&bounds, point)) return HTNOWHERE;
+
+  const UINT dpi = GetDpiForWindow(window);
+  const int padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+  const int width = GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + padding;
+  const int height = GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi) + padding;
+  const bool left = point.x < bounds.left + width;
+  const bool right = point.x >= bounds.right - width;
+  if (point.y < bounds.top + height) {
+    return left ? HTTOPLEFT : right ? HTTOPRIGHT : HTTOP;
+  }
+  if (point.y >= bounds.bottom - height) {
+    return left ? HTBOTTOMLEFT : right ? HTBOTTOMRIGHT : HTBOTTOM;
+  }
+  return left ? HTLEFT : right ? HTRIGHT : HTCLIENT;
+}
+
+// Flutter fills the client rect. Let its parent handle the resize edges.
+LRESULT CALLBACK FlutterChildProc(HWND window, UINT message, WPARAM wparam,
+                                  LPARAM lparam, UINT_PTR id, DWORD_PTR parent) {
+  if (message == WM_NCHITTEST) {
+    if (ResizeHitTest(reinterpret_cast<HWND>(parent), lparam) != HTCLIENT) {
+      return HTTRANSPARENT;
+    }
+  } else if (message == WM_NCDESTROY) {
+    RemoveWindowSubclass(window, FlutterChildProc, id);
+  }
+  return DefSubclassProc(window, message, wparam, lparam);
+}
 
 /// Registry key for app theme preference.
 ///
@@ -144,7 +185,15 @@ bool Win32Window::Create(const std::wstring& title,
     return false;
   }
 
+  // CreateWindow adds a caption to overlapped windows. Remove it after creation.
+  SetWindowLongPtr(window, GWL_STYLE,
+                   GetWindowLongPtr(window, GWL_STYLE) & ~WS_CAPTION);
+  SetWindowPos(window, nullptr, 0, 0, 0, 0,
+               SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                   SWP_NOACTIVATE);
   UpdateTheme(window);
+  DwmSetWindowAttribute(window, kDwmBorderColor, &kDwmColorNone,
+                        sizeof(kDwmColorNone));
 
   return OnCreate();
 }
@@ -179,6 +228,29 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_NCCALCSIZE: {
+      if (IsZoomed(hwnd)) {
+        RECT* client = wparam
+                           ? &reinterpret_cast<NCCALCSIZE_PARAMS*>(lparam)->rgrc[0]
+                           : reinterpret_cast<RECT*>(lparam);
+        MONITORINFO monitor{sizeof(monitor)};
+        if (GetMonitorInfo(MonitorFromRect(client, MONITOR_DEFAULTTONEAREST),
+                           &monitor)) {
+          IntersectRect(client, client, &monitor.rcWork);
+        }
+      }
+      return 0;
+    }
+    case WM_NCHITTEST:
+      return ResizeHitTest(hwnd, lparam);
+    case WM_GETMINMAXINFO: {
+      DefWindowProc(hwnd, message, wparam, lparam);
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      const double scale = GetDpiForWindow(hwnd) / 96.0;
+      info->ptMinTrackSize.x = Scale(465, scale);
+      info->ptMinTrackSize.y = Scale(360, scale);
+      return 0;
+    }
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -241,6 +313,8 @@ Win32Window* Win32Window::GetThisFromHandle(HWND const window) noexcept {
 void Win32Window::SetChildContent(HWND content) {
   child_content_ = content;
   SetParent(content, window_handle_);
+  SetWindowSubclass(content, FlutterChildProc, 0,
+                    reinterpret_cast<DWORD_PTR>(window_handle_));
   RECT frame = GetClientArea();
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,

@@ -1,7 +1,7 @@
 name: dji_live_gallery
-description: "Pocket Motion — DJI Osmo Pocket 3 实况照片导出工具（Apple 原生 HEIC+MOV & Google Motion Photo）"
+description: "Pocket Motion — DJI Osmo Pocket 4 / 4P 实况照片预览与导出"
 publish_to: 'none'
-version: 2.1.1+1
+version: 2.1.2+1
 
 environment:
   sdk: ^3.13.0
@@ -20,3 +20,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/pocket_motion.png

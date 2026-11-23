@@ -1,18 +1,26 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+
+import 'media_metadata.dart';
 import 'tool_path.dart';
+import 'video_preview.dart';
 
 /// 懒加载缩略图：首次构建时用 ffmpeg 从 MP4 抽一帧，缓存到临时目录。
 class ThumbnailImage extends StatefulWidget {
   final String videoPath;
-  final double size;
-  final bool isLive;
+  final Duration position;
+  final BoxFit fit;
+  final ValueChanged<double>? onAspectRatio;
   const ThumbnailImage({
     super.key,
     required this.videoPath,
-    this.size = 56,
-    this.isLive = false,
+    required this.position,
+    this.fit = BoxFit.cover,
+    this.onAspectRatio,
   });
 
   @override
@@ -20,8 +28,30 @@ class ThumbnailImage extends StatefulWidget {
 }
 
 class _ThumbnailImageState extends State<ThumbnailImage> {
+  static const _decoderLimit = 3;
+  static final _waiting = Queue<Completer<void>>();
+  static int _decoders = 0;
+
   String? _cachePath;
-  bool _loading = true;
+
+  static Future<void> _reserveDecoder() async {
+    if (_decoders < _decoderLimit) {
+      _decoders++;
+      return;
+    }
+    final next = Completer<void>();
+    _waiting.addLast(next);
+    await next.future;
+  }
+
+  static void _releaseDecoder() {
+    if (_waiting.isEmpty) {
+      _decoders--;
+    } else {
+      // Prefer the thumbnails the user scrolled to most recently.
+      _waiting.removeLast().complete();
+    }
+  }
 
   Future<String> _cacheDir() async {
     final tmp = Directory.systemTemp;
@@ -37,64 +67,93 @@ class _ThumbnailImageState extends State<ThumbnailImage> {
   }
 
   Future<void> _ensureThumb() async {
-    final dir = await _cacheDir();
-    // 用文件名做缓存键（兼容 Windows 反斜杠路径）
-    final key = p.basename(widget.videoPath).replaceAll('.', '_');
-    final cache = p.join(dir, '$key.jpg');
-    final f = File(cache);
-    if (await f.exists()) {
-      setState(() { _cachePath = cache; _loading = false; });
-      return;
-    }
-    // ffmpeg 抽 1.5s 处、缩放到 320 宽
-    final r = await Process.run(ToolPath.find('ffmpeg'), [
-      '-y', '-ss', '1.5', '-i', widget.videoPath,
-      '-frames:v', '1', '-vf', 'scale=320:-1',
-      '-q:v', '5', '-update', '1', cache,
-    ]);
-    if (r.exitCode == 0 && await f.exists()) {
-      setState(() { _cachePath = cache; _loading = false; });
-    } else {
-      setState(() => _loading = false);
+    String? path;
+    try {
+      final stat = await File(widget.videoPath).stat();
+      final dir = await _cacheDir();
+      if (!mounted) return;
+      final key =
+          'grid_${widget.videoPath.hashCode}_${stat.modified.millisecondsSinceEpoch}'
+          '_${widget.position.inMicroseconds}';
+      final cache = File(p.join(dir, '$key.jpg'));
+      if (!await cache.exists()) {
+        await _reserveDecoder();
+        try {
+          if (!mounted) return;
+          if (!await cache.exists()) {
+            final scratch = await Directory(dir).createTemp('render-');
+            try {
+              final staged = File(p.join(scratch.path, 'thumb.jpg'));
+              final result = await Process.run(ToolPath.find('ffmpeg'), [
+                '-v',
+                'error',
+                '-nostdin',
+                '-filter_threads',
+                '1',
+                '-y',
+                '-ss',
+                VideoPreview.seconds(widget.position),
+                '-threads',
+                '2',
+                '-i',
+                widget.videoPath,
+                '-map',
+                '0:v:0',
+                '-frames:v',
+                '1',
+                '-vf',
+                'scale=480:480:force_original_aspect_ratio=decrease',
+                '-q:v',
+                '5',
+                '-update',
+                '1',
+                staged.path,
+              ]);
+              if (result.exitCode == 0 &&
+                  await staged.exists() &&
+                  !await cache.exists()) {
+                await staged.rename(cache.path);
+              }
+            } finally {
+              await scratch.delete(recursive: true);
+            }
+          }
+        } finally {
+          _releaseDecoder();
+        }
+      }
+      if (await cache.exists()) {
+        path = cache.path;
+        final reportRatio = widget.onAspectRatio;
+        if (reportRatio != null) {
+          final size = MediaMetadata.extractJpegDimensions(
+            await cache.readAsBytes(),
+          );
+          if (mounted && size != null) reportRatio(size.$1 / size.$2);
+        }
+      }
+    } on FileSystemException {
+      // A moved source is represented by the placeholder.
+    } on ProcessException {
+      // FFmpeg may be unavailable in a source checkout.
+    } finally {
+      if (mounted) {
+        setState(() => _cachePath = path);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Container(
-          width: widget.size,
-          height: widget.size * 0.66,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade200,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: _loading
-              ? const Center(
-                  child: SizedBox(
-                    width: 14, height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2)))
-              : _cachePath != null
-                  ? Image.file(File(_cachePath!), fit: BoxFit.cover)
-                  : const Icon(Icons.movie, color: Colors.grey),
-        ),
-        if (widget.isLive)
-          Positioned(
-            right: 0, bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: BoxDecoration(
-                color: Colors.teal,
-                borderRadius: BorderRadius.circular(3)),
-              child: const Text('LIVE',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 8, fontWeight: FontWeight.bold)),
-            ),
-          ),
-      ],
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: _cachePath != null
+          ? Image.file(
+              File(_cachePath!),
+              fit: widget.fit,
+              errorBuilder: (_, _, _) => const Icon(Icons.movie_outlined),
+            )
+          : const Icon(Icons.movie, color: Colors.grey),
     );
   }
 }
