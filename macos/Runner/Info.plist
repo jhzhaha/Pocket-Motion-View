@@ -13,9 +13,9 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Pocket Motion</string>
+	<string>Pocket Motion View</string>
 	<key>CFBundleDisplayName</key>
-	<string>Pocket Motion</string>
+	<string>Pocket Motion View</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

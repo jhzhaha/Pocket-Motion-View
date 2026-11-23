@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.zoyotech" "\0"
-            VALUE "FileDescription", "Pocket Motion" "\0"
+            VALUE "FileDescription", "Pocket Motion View" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "PocketMotion" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.zoyotech. All rights reserved." "\0"
             VALUE "OriginalFilename", "PocketMotion.exe" "\0"
-            VALUE "ProductName", "Pocket Motion" "\0"
+            VALUE "ProductName", "Pocket Motion View" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -67,7 +67,14 @@ class _WindowsTitleBarState extends State<WindowsTitleBar>
                         height: 22,
                       ),
                       const SizedBox(width: 8),
-                      Text('Pocket Motion', style: theme.textTheme.labelLarge),
+                      Flexible(
+                        child: Text(
+                          'Pocket Motion View',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelLarge,
+                        ),
+                      ),
                     ],
                   ),
                 ),

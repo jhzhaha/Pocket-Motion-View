@@ -1,6 +1,6 @@
-# Pocket Motion
+# Pocket Motion View
 
-Pocket Motion 从 DJI Osmo Pocket 4 和 Pocket 4P 的相机素材恢复实况照片，并提供桌面预览和批量导出。此项目源自 [MicageEritc/Pocket-Motion](https://github.com/MicageEritc/Pocket-Motion)。
+Pocket Motion View 从 DJI Osmo Pocket 4 和 Pocket 4P 的相机素材恢复实况照片，并提供桌面预览和批量导出。此项目源自 [MicageEritc/Pocket-Motion](https://github.com/MicageEritc/Pocket-Motion)。
 
 ## 此 fork 新增
 
@@ -12,7 +12,7 @@ Pocket Motion 从 DJI Osmo Pocket 4 和 Pocket 4P 的相机素材恢复实况照
 
 ## Windows 便携版
 
-支持 Windows 10 和 11。下载 Windows x64 ZIP，完整解压后运行 `PocketMotion.exe`。[下载页面](https://github.com/jhzhaha/Pocket-Motion/releases/latest)
+支持 Windows 10 和 11。下载 Windows x64 ZIP，完整解压后运行 `PocketMotion.exe`。[下载页面](../../releases/latest)
 
 1. 悬停或点击左下角的齿轮，设置素材目录和「导出位置」。素材目录选择存放原始 MP4 的那一层，例如存储卡上的 `DCIM/DJI_001`。左栏可切换实况、视频和照片。
 2. 点击卡片打开预览。在底栏用滚轮或拖动横向滚动条浏览素材，点击缩略图切换。按 Esc 或右上角关闭按钮返回素材库。
@@ -49,4 +49,4 @@ flutter build windows --release
 
 Windows 便携包使用独立的 FFmpeg 9.1 Essentials 工具。手动构建时可以将 `ffmpeg.exe` 和 `ffplay.exe` 放在应用旁，或通过 PATH 提供。构建配置、GPL v3 许可证和源码版本可在 Gyan 的发行包中找到。[Windows 工具发行包](https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.1-essentials_build.zip) · [FFmpeg 源码](https://github.com/FFmpeg/FFmpeg/tree/74e4393595)
 
-Pocket Motion 依据上游声明使用 [MIT License](LICENSE)。
+Pocket Motion View 依据上游声明使用 [MIT License](LICENSE)。

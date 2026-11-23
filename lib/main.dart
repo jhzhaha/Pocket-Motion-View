@@ -52,7 +52,7 @@ class _DjiLiveAppState extends State<DjiLiveApp> {
         ? palette.copyWith(onPrimaryContainer: Colors.white)
         : palette;
     return MaterialApp(
-      title: 'Pocket Motion',
+      title: 'Pocket Motion View',
       theme: ThemeData(
         useMaterial3: true,
         fontFamily: Platform.isWindows ? 'Microsoft YaHei UI' : null,
@@ -686,7 +686,7 @@ class _HomePageState extends State<HomePage> {
                 child: Padding(
                   padding: const EdgeInsets.all(9),
                   child: Tooltip(
-                    message: 'Pocket Motion',
+                    message: 'Pocket Motion View',
                     child: Image.asset(
                       'assets/pocket_motion.png',
                       width: 40,

@@ -38,6 +38,7 @@ void main() {
       const MaterialApp(home: Scaffold(body: WindowsTitleBar())),
     );
     await tester.pumpAndSettle();
+    expect(find.text('Pocket Motion View'), findsOneWidget);
     await tester.tap(find.byTooltip('最大化'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('还原窗口'), findsOneWidget);
